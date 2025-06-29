@@ -3,58 +3,46 @@ import json
 from datetime import datetime
 
 class MQTTTemperatureClient:
-    def __init__(self, broker, port, topic, on_new_data_callback=None):
+    def __init__(self, broker, port, topic, on_new_data_callback):
         self.broker = broker
         self.port = port
         self.topic = topic
-        self.on_new_data_callback = on_new_data_callback # Callback para atualizações da GUI
-        self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-        self._client.on_connect = self._on_connect
-        self._client.on_message = self._on_message
-
-    def _on_connect(self, client, userdata, flags, rc, properties):
-        if rc == 0:
-            print(f"Conectado ao broker MQTT com sucesso! Assinando tópico: {self.topic}")
-            client.subscribe(self.topic)
-        else:
-            print(f"Falha na conexão ao broker MQTT. Código de retorno: {rc}")
-
-    def _on_message(self, client, userdata, msg):
-        try:
-            topic_parts = msg.topic.split('/')
-            if len(topic_parts) >= 3 and topic_parts[1] == "sensors":
-                room_id = topic_parts[-1]
-
-                payload = json.loads(msg.payload.decode('utf-8'))
-                timestamp_str = payload.get("timestamp")
-                temperature_value = payload.get("value")
-
-                if timestamp_str and isinstance(temperature_value, (int, float)):
-                    # Remove 'Z' para compatibilidade com strptime e converte
-                    timestamp = datetime.strptime(timestamp_str.replace('Z', ''), "%Y-%m-%dT%H:%M:%S")
-                    
-                    # Chama a função de callback para notificar a GUI
-                    if self.on_new_data_callback:
-                        self.on_new_data_callback(room_id, timestamp, temperature_value)
-
-        except json.JSONDecodeError:
-            print(f"Erro ao decodificar JSON da mensagem: {msg.payload}")
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            print(f"Erro inesperado ao processar mensagem: {e}")
+        self.on_new_data_callback = on_new_data_callback
+        self.client = mqtt.Client()
+        self.client.on_connect = self.on_connect
+        self.client.on_message = self.on_message
 
     def connect_and_loop(self):
-        """Tenta conectar ao broker MQTT e inicia o loop em segundo plano."""
+        self.client.connect(self.broker, self.port, 60)
+        self.client.subscribe(self.topic)
+        self.client.loop_start()  # Importante: não bloqueia a thread principal
+
+    def on_connect(self, client, userdata, flags, rc):
+        print(f"Conectado ao broker MQTT com código: {rc}")
+
+    def on_message(self, client, userdata, msg):
         try:
-            self._client.connect(self.broker, self.port, 60)
-            self._client.loop_start() # Inicia o loop MQTT em uma thread separada
+            parts = msg.topic.split("/")
+            if len(parts) == 4 and parts[1] == "sensors":
+                room_id = parts[2]
+                temp_type = parts[3]
+
+                # Processa tanto Y=0 (ambiente) quanto Y=1 (referência)
+                if temp_type not in ["0", "1"]:
+                    return  # Ignora outros tipos de temperatura
+
+                payload = json.loads(msg.payload.decode())
+                timestamp_str = payload.get("timestamp")
+                value = float(payload.get("value"))
+
+                # Converte a string de timestamp para objeto datetime
+                timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+
+                # Chama o callback com informação do tipo de temperatura
+                self.on_new_data_callback(room_id, timestamp, value, temp_type)
         except Exception as e:
-            print(f"Não foi possível conectar ao broker MQTT: {e}")
-            raise # Re-lança a exceção para que o main.py possa tratá-la
+            print(f"Erro ao processar mensagem MQTT: {e}")
 
     def disconnect(self):
-        """Para o loop MQTT e desconecta do broker."""
-        self._client.loop_stop()
-        self._client.disconnect()
-        print("Cliente MQTT desconectado.")
+        self.client.loop_stop()
+        self.client.disconnect()
