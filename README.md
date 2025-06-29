@@ -1,72 +1,103 @@
-# monitor_temperatura
+# Monitor de Temperatura - Versão Atualizada
 
-Este projeto é uma aplicação de **monitoramento de temperatura de quartos em tempo real**, utilizando **MQTT** para receber dados e uma **interface gráfica (GUI)** desenvolvida com **Tkinter** e **Matplotlib** para visualização.
+Sistema de monitoramento de temperatura de quartos usando MQTT e interface gráfica em Python.
 
----
+## Funcionalidades
 
-## Funcionalidades Principais
+- Monitoramento em tempo real de temperaturas de múltiplos quartos
+- Interface gráfica intuitiva com gráficos e relatórios
+- Suporte para dois tipos de temperatura:
+  - **Temperatura Ambiente (Y=0)**: Temperatura lida no ambiente
+  - **Temperatura de Referência (Y=1)**: Temperatura de referência para alertas
+- Sistema de alertas quando temperatura ambiente excede a referência
+- Atualizações não bloqueantes (dados chegam a cada segundo)
 
-* **Integração MQTT:** Conecta-se a um broker MQTT e se inscreve em tópicos de temperatura para receber dados em tempo real.
-* **Atualizações em Tempo Real:** A GUI é atualizada dinamicamente à medida que novos dados de temperatura são recebidos.
-* **Resumo de Temperaturas Atuais:** Exibe um painel com a última temperatura de cada quarto monitorado.
-* **Seleção de Quarto:** Permite selecionar um quarto específico para visualizar seu histórico de temperaturas em um gráfico.
-* **Alerta de Temperatura:** Destaca temperaturas que excedem um limite predefinido, indicando um alerta.
-* **Histórico Limitado:** Armazena um número configurável das últimas temperaturas para cada quarto, otimizando o uso de memória.
+## Estrutura dos Tópicos MQTT
 
----
+O sistema escuta tópicos no formato:
+```
+/sensors/X/Y
+```
 
-## Estrutura do Projeto
+Onde:
+- **X**: ID do quarto (exemplo: "101", "102", etc.)
+- **Y**: Tipo de temperatura
+  - **0**: Temperatura lida no ambiente
+  - **1**: Temperatura de referência
 
-O projeto está organizado em arquivos separados para garantir modularidade e facilitar a manutenção. A estrutura de pastas esperada é a seguinte:
+## Formato das Mensagens
 
-monitor_temperatura/\
-├── main.py             # Ponto de entrada principal da aplicação.\
-├── mqtt_client.py      # Lógica de comunicação com o broker MQTT (conexão, subscrição, tratamento de mensagens).\
-├── gui.py              # Implementação da interface gráfica do usuário (Tkinter e Matplotlib).\
-├── config.py           # Arquivo de configuração para parâmetros como broker MQTT e limites de temperatura.\
-└── README.md           # Este arquivo de documentação.
+```json
+{
+  "timestamp": "2025-06-21T18:36:55Z",
+  "value": 23.5
+}
+```
 
----
+## Exemplo de Uso
 
-## Pré-requisitos
-
-Para executar este projeto, você precisará ter instalado:
-
-* **Python 3.x**
-* Biblioteca **`paho-mqtt`**
-* Biblioteca **`matplotlib`**
-* Um **broker MQTT** (ex: Mosquitto) rodando e acessível (por padrão, espera-se que esteja em `localhost:1883`).
-
----
-
-## Instalação e Execução
-
-1.  **Instale as dependências Python:**
-    ```bash
-    pip install paho-mqtt matplotlib
-    ```
-2.  **Certifique-se de que um broker MQTT esteja em execução.** Se você usa Mosquitto, pode iniciá-lo geralmente com:
-    ```bash
-    mosquitto
-    ```
-3.  **Ajuste as configurações (opcional):** Abra o arquivo `config.py` e modifique `MQTT_BROKER`, `MQTT_PORT`, `MQTT_TOPIC`, `MAX_TEMPS_PER_ROOM` e `ALARM_TEMP_THRESHOLD` conforme a sua necessidade.
-4.  **Execute a aplicação:**
-    ```bash
-    python main.py
-    ```
-
----
-
-## Enviando Dados de Teste (Exemplo)
-
-Você pode simular o envio de dados de temperatura para o broker MQTT usando `mosquitto_pub` (se você tiver o Mosquitto instalado).
-
-Para o **Quarto1**:
+Para enviar dados de teste usando mosquitto_pub:
 
 ```bash
-mosquitto_pub -h localhost -t "/sensors/X/1" -m '{\"timestamp\": \"2025-06-21T18:36:55Z\", \"value\": 19.8}'
+# Temperatura ambiente do quarto 101
+mosquitto_pub -h localhost -t "/sensors/101/0" -m '{"timestamp": "2025-06-21T18:36:55Z", "value": 24.5}'
 
-Para o **Quarto2**:
+# Temperatura de referência do quarto 101
+mosquitto_pub -h localhost -t "/sensors/101/1" -m '{"timestamp": "2025-06-21T18:36:55Z", "value": 25.0}'
+
+# Temperatura ambiente do quarto 102
+mosquitto_pub -h localhost -t "/sensors/102/0" -m '{"timestamp": "2025-06-21T18:36:56Z", "value": 22.1}'
+
+# Temperatura de referência do quarto 102
+mosquitto_pub -h localhost -t "/sensors/102/1" -m '{"timestamp": "2025-06-21T18:36:56Z", "value": 23.0}'
+```
+
+## Configurações
+
+As configurações estão no arquivo `config.py`:
+
+- `MQTT_BROKER`: Endereço do broker MQTT
+- `MQTT_PORT`: Porta do broker MQTT
+- `MQTT_TOPIC`: Tópico base para escuta
+- `MAX_TEMPS_PER_ROOM`: Máximo de temperaturas armazenadas por quarto
+- `ALARM_TEMP_THRESHOLD`: Temperatura de alerta padrão
+- `TEMP_TYPE_ENVIRONMENT`: Constante para tipo ambiente ("0")
+- `TEMP_TYPE_REFERENCE`: Constante para tipo referência ("1")
+
+## Execução
 
 ```bash
-mosquitto_pub -h localhost -t "/sensors/X/2" -m '{\"timestamp\": \"2025-06-21T18:36:55Z\", \"value\": 19.8}'
+python main.py
+```
+
+## Dependências
+
+```bash
+pip install paho-mqtt matplotlib
+```
+
+## Interface
+
+A interface possui:
+
+1. **Seletor de Quartos**: Para visualizar dados específicos de um quarto
+2. **Painel de Resumo**: Mostra últimas temperaturas de todos os quartos com status de alerta
+3. **Área Principal**: 
+   - Quando "Nenhum" está selecionado: lista todas as temperaturas separadas por tipo
+   - Quando um quarto específico está selecionado: gráfico com ambos os tipos de temperatura
+
+## Sistema de Alertas
+
+O sistema compara a temperatura ambiente com:
+- Temperatura de referência mais recente do mesmo quarto (se disponível)
+- Valor padrão `ALARM_TEMP_THRESHOLD` (se não houver referência específica)
+
+Alertas são exibidos quando a temperatura ambiente excede a referência.
+
+## Melhorias Implementadas
+
+1. **Processamento não bloqueante**: Uso de `after_idle()` em vez de `after(1, ...)` para melhor responsividade
+2. **Separação de tipos de temperatura**: Armazenamento e visualização separada para ambiente e referência
+3. **Alertas dinâmicos**: Comparação com temperatura de referência específica do quarto
+4. **Interface melhorada**: Melhor organização da informação e gráficos mais informativos
+5. **Performance otimizada**: Atualizações eficientes da GUI mesmo com dados chegando a cada segundo
